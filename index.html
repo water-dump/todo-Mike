@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>오늘의 할 일</title>
+  <style>
+    :root {
+      --bg-1: #ffe4f1;
+      --bg-2: #e3ecff;
+      --card: #ffffff;
+      --text: #4a3f5c;
+      --muted: #a89bb8;
+      --line: #f1e8f7;
+      --pink: #ff8fc7;
+      --purple: #b18cff;
+      --mint: #6fdcb8;
+      --item: #fbf7ff;
+      --shadow: 0 12px 32px rgba(177, 140, 255, 0.25);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-1: #2a2140;
+        --bg-2: #1c2338;
+        --card: #2c2741;
+        --text: #f1eafc;
+        --muted: #9b8fb3;
+        --line: #3b3456;
+        --item: #342e4c;
+        --shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: linear-gradient(135deg, var(--bg-1), var(--bg-2));
+      background-attachment: fixed;
+      color: var(--text);
+      font-family: "Jua", system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 48px 16px;
+    }
+    main {
+      width: 100%;
+      max-width: 460px;
+      background: var(--card);
+      border-radius: 28px;
+      padding: 28px 22px 22px;
+      box-shadow: var(--shadow);
+    }
+    h1 {
+      margin: 0 0 20px;
+      font-size: 28px;
+      text-align: center;
+      font-weight: 400;
+    }
+    form {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    #todo-input {
+      flex: 1;
+      min-width: 0;
+      padding: 13px 18px;
+      font: inherit;
+      font-size: 17px;
+      border: 2px solid var(--line);
+      border-radius: 999px;
+      background: var(--item);
+      color: var(--text);
+      transition: border-color .15s;
+    }
+    #todo-input::placeholder { color: var(--muted); }
+    #todo-input:focus { outline: none; border-color: var(--purple); }
+    button.add {
+      width: 50px;
+      flex-shrink: 0;
+      font-size: 26px;
+      line-height: 1;
+      border: none;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--pink), var(--purple));
+      color: #fff;
+      cursor: pointer;
+      transition: transform .12s;
+    }
+    button.add:hover { transform: scale(1.08) rotate(90deg); }
+    button.add:active { transform: scale(0.95); }
+
+    ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    li {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 10px 10px 14px;
+      background: var(--item);
+      border-radius: 18px;
+      animation: pop .25s ease-out;
+    }
+    @keyframes pop {
+      from { transform: scale(0.9); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    /* 동글동글 체크박스 */
+    li input[type="checkbox"] {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 26px;
+      height: 26px;
+      margin: 0;
+      flex-shrink: 0;
+      border-radius: 50%;
+      border: 3px solid var(--purple);
+      background: transparent;
+      cursor: pointer;
+      display: grid;
+      place-content: center;
+      transition: background .15s, border-color .15s;
+    }
+    li input[type="checkbox"]::after {
+      content: "✓";
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      transform: scale(0);
+      transition: transform .15s;
+    }
+    li input[type="checkbox"]:checked {
+      background: var(--mint);
+      border-color: var(--mint);
+    }
+    li input[type="checkbox"]:checked::after { transform: scale(1); }
+
+    li .text {
+      flex: 1;
+      min-width: 0;
+      font-size: 17px;
+      word-break: break-word;
+      cursor: text;
+    }
+    li.done .text {
+      text-decoration: line-through;
+      text-decoration-color: var(--pink);
+      text-decoration-thickness: 2px;
+      color: var(--muted);
+    }
+    li .edit-input {
+      flex: 1;
+      min-width: 0;
+      font: inherit;
+      font-size: 17px;
+      padding: 4px 10px;
+      border: 2px solid var(--purple);
+      border-radius: 10px;
+      background: var(--card);
+      color: var(--text);
+      outline: none;
+    }
+    li button.icon {
+      border: none;
+      background: none;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 10px;
+      opacity: .55;
+      transition: opacity .12s, background .12s, transform .12s;
+    }
+    li button.icon:hover {
+      opacity: 1;
+      background: var(--line);
+      transform: scale(1.1);
+    }
+
+    .empty {
+      text-align: center;
+      color: var(--muted);
+      padding: 28px 0 12px;
+      font-size: 16px;
+    }
+    .empty .big { font-size: 40px; display: block; margin-bottom: 6px; }
+    .summary {
+      text-align: center;
+      margin: 18px 0 0;
+      font-size: 16px;
+      color: var(--purple);
+    }
+    .summary:empty { display: none; }
+    .hint {
+      text-align: center;
+      margin: 8px 0 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>✨ 오늘의 할 일 ✨</h1>
+
+    <form id="todo-form">
+      <input type="text" id="todo-input" placeholder="무엇을 할까요?" autocomplete="off" autofocus>
+      <button type="submit" class="add" aria-label="추가">＋</button>
+    </form>
+
+    <ul id="todo-list"></ul>
+    <p class="empty" id="empty"><span class="big">🌷</span>아직 할 일이 없어요. 하나 추가해볼까요?</p>
+    <p class="summary" id="summary"></p>
+    <p class="hint" id="hint">글자를 더블클릭하면 고칠 수 있어요</p>
+  </main>
+
+  <script>
+    const form = document.getElementById('todo-form');
+    const input = document.getElementById('todo-input');
+    const list = document.getElementById('todo-list');
+    const empty = document.getElementById('empty');
+    const summary = document.getElementById('summary');
+    const hint = document.getElementById('hint');
+
+    // 메모리에만 저장 — 새로고침하면 초기화됩니다.
+    let todos = [];
+    let nextId = 1;
+    let editingId = null;
+
+    function render() {
+      list.innerHTML = '';
+      for (const todo of todos) {
+        list.appendChild(todo.id === editingId ? renderEditing(todo) : renderItem(todo));
+      }
+
+      const total = todos.length;
+      const doneCount = todos.filter(t => t.done).length;
+      empty.hidden = total > 0;
+      hint.hidden = total === 0;
+
+      if (total === 0) summary.textContent = '';
+      else if (doneCount === total) summary.textContent = '🎉 모두 끝냈어요! 최고예요!';
+      else if (doneCount === 0) summary.textContent = `💪 할 일 ${total}개, 화이팅!`;
+      else summary.textContent = `🎉 ${total}개 중 ${doneCount}개 완료했어요!`;
+    }
+
+    function renderItem(todo) {
+      const li = document.createElement('li');
+      if (todo.done) li.classList.add('done');
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = todo.done;
+      checkbox.setAttribute('aria-label', `"${todo.text}" 완료`);
+      checkbox.addEventListener('change', () => {
+        todo.done = checkbox.checked;
+        render();
+      });
+
+      const text = document.createElement('span');
+      text.className = 'text';
+      text.textContent = todo.text;
+      text.addEventListener('dblclick', () => startEdit(todo.id));
+
+      const edit = document.createElement('button');
+      edit.className = 'icon';
+      edit.textContent = '✏️';
+      edit.title = '수정';
+      edit.setAttribute('aria-label', `"${todo.text}" 수정`);
+      edit.addEventListener('click', () => startEdit(todo.id));
+
+      const del = document.createElement('button');
+      del.className = 'icon';
+      del.textContent = '🗑️';
+      del.title = '삭제';
+      del.setAttribute('aria-label', `"${todo.text}" 삭제`);
+      del.addEventListener('click', () => {
+        todos = todos.filter(t => t.id !== todo.id);
+        render();
+      });
+
+      li.append(checkbox, text, edit, del);
+      return li;
+    }
+
+    function renderEditing(todo) {
+      const li = document.createElement('li');
+
+      const field = document.createElement('input');
+      field.type = 'text';
+      field.className = 'edit-input';
+      field.value = todo.text;
+      field.setAttribute('aria-label', '할 일 수정');
+
+      let finished = false;
+      const finish = (save) => {
+        if (finished) return;
+        finished = true;
+        const value = field.value.trim();
+        // 빈 칸으로 저장하면 원래 내용을 유지합니다.
+        if (save && value) todo.text = value;
+        editingId = null;
+        render();
+      };
+
+      field.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') finish(true);
+        else if (e.key === 'Escape') finish(false);
+      });
+      field.addEventListener('blur', () => finish(true));
+
+      li.append(field);
+      requestAnimationFrame(() => {
+        field.focus();
+        field.select();
+      });
+      return li;
+    }
+
+    function startEdit(id) {
+      editingId = id;
+      render();
+    }
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      todos.push({ id: nextId++, text, done: false });
+      input.value = '';
+      input.focus();
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>
