@@ -52,10 +52,16 @@
       box-shadow: var(--shadow);
     }
     h1 {
-      margin: 0 0 20px;
+      margin: 0;
       font-size: 28px;
       text-align: center;
       font-weight: 400;
+    }
+    .subtitle {
+      margin: 4px 0 20px;
+      font-size: 14px;
+      text-align: center;
+      color: var(--muted);
     }
     form {
       display: flex;
@@ -210,6 +216,7 @@
 <body>
   <main>
     <h1>✨ 오늘의 할 일 ✨</h1>
+    <p class="subtitle">Mike's todo list</p>
 
     <form id="todo-form">
       <input type="text" id="todo-input" placeholder="무엇을 할까요?" autocomplete="off" autofocus>
