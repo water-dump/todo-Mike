@@ -18,6 +18,8 @@
       --item: #fbf7ff;
       --error-bg: #ffe3ea;
       --error-text: #c2335b;
+      --badge-bg: #ffe4f1;
+      --badge-text: #d4579a;
       --shadow: 0 12px 32px rgba(177, 140, 255, 0.25);
     }
     @media (prefers-color-scheme: dark) {
@@ -31,6 +33,8 @@
         --item: #342e4c;
         --error-bg: #4a2537;
         --error-text: #ffb3c8;
+        --badge-bg: #4a2a45;
+        --badge-text: #ffb3d9;
         --shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
       }
     }
@@ -72,8 +76,7 @@
       gap: 8px;
       margin-bottom: 18px;
     }
-    #todo-input {
-      flex: 1;
+    form input {
       min-width: 0;
       padding: 13px 18px;
       font: inherit;
@@ -84,8 +87,10 @@
       color: var(--text);
       transition: border-color .15s;
     }
-    #todo-input::placeholder { color: var(--muted); }
-    #todo-input:focus { outline: none; border-color: var(--purple); }
+    form input::placeholder { color: var(--muted); }
+    form input:focus { outline: none; border-color: var(--purple); }
+    #todo-input { flex: 1; }
+    #author-input { flex: 0 0 92px; padding: 13px 14px; }
     button.add {
       width: 50px;
       flex-shrink: 0;
@@ -177,6 +182,18 @@
       text-decoration-thickness: 2px;
       color: var(--muted);
     }
+    li .author {
+      flex-shrink: 0;
+      max-width: 6.5em;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: var(--badge-bg);
+      color: var(--badge-text);
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     li .edit-input {
       flex: 1;
       min-width: 0;
@@ -234,6 +251,7 @@
     <p class="subtitle">Mike's todo list</p>
 
     <form id="todo-form">
+      <input type="text" id="author-input" placeholder="이름" maxlength="20" autocomplete="off" aria-label="작성자 이름 (안 적어도 돼요)">
       <input type="text" id="todo-input" placeholder="무엇을 할까요?" autocomplete="off" autofocus>
       <button type="submit" class="add" aria-label="추가">＋</button>
     </form>
@@ -251,6 +269,7 @@
   <script>
     const form = document.getElementById('todo-form');
     const input = document.getElementById('todo-input');
+    const authorInput = document.getElementById('author-input');
     const addButton = form.querySelector('button.add');
     const errorBox = document.getElementById('error');
     const list = document.getElementById('todo-list');
@@ -327,6 +346,15 @@
       text.className = 'text';
       text.textContent = todo.text;
       text.addEventListener('dblclick', () => startEdit(todo.id));
+      li.append(checkbox, text);
+
+      if (todo.author) {
+        const author = document.createElement('span');
+        author.className = 'author';
+        author.textContent = todo.author;
+        author.title = `작성자: ${todo.author}`;
+        li.append(author);
+      }
 
       const edit = document.createElement('button');
       edit.className = 'icon';
@@ -354,7 +382,7 @@
         }
       });
 
-      li.append(checkbox, text, edit, del);
+      li.append(edit, del);
       return li;
     }
 
@@ -413,11 +441,13 @@
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const text = input.value.trim();
+      // 이름은 안 적어도 돼요. 빈 칸이면 null로 저장합니다.
+      const author = authorInput.value.trim() || null;
       if (!text || !db || adding) return;
 
       adding = true;
       addButton.disabled = true;
-      const { data, error } = await db.from('todos').insert({ text }).select().single();
+      const { data, error } = await db.from('todos').insert({ text, author }).select().single();
       adding = false;
       addButton.disabled = false;
 
@@ -437,7 +467,7 @@
     async function load() {
       const { data, error } = await db
         .from('todos')
-        .select('id, text, done, created_at')
+        .select('id, text, done, author, created_at')
         .order('created_at')
         .order('id');
       isLoading = false;
