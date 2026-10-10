@@ -314,13 +314,61 @@
       font-size: 16px;
     }
     .empty .big { font-size: 40px; display: block; margin-bottom: 6px; }
-    .summary {
-      text-align: center;
-      margin: 18px 0 0;
-      font-size: 16px;
-      color: var(--purple);
+    .stats {
+      margin: 0 0 14px;
+      padding: 12px 16px 14px;
+      border-radius: 18px;
+      background: var(--item);
     }
-    .summary:empty { display: none; }
+    .stats[hidden] { display: none; }
+    .stats-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 8px;
+      font-size: 16px;
+    }
+    .stats .rate { color: var(--purple); }
+    .progress {
+      height: 10px;
+      border-radius: 999px;
+      background: var(--line);
+      overflow: hidden;
+    }
+    .progress .bar {
+      height: 100%;
+      width: 0;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--pink), var(--purple));
+      transition: width .3s ease-out;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin: 0 0 12px;
+      padding: 4px;
+      border-radius: 999px;
+      background: var(--item);
+    }
+    .tabs button {
+      flex: 1;
+      padding: 8px 0;
+      border: none;
+      border-radius: 999px;
+      background: none;
+      color: var(--muted);
+      font: inherit;
+      font-size: 15px;
+      cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .tabs button:hover { color: var(--text); }
+    .tabs button[aria-selected="true"] {
+      background: linear-gradient(135deg, var(--pink), var(--purple));
+      color: #fff;
+    }
+    .tabs .count { font-size: 13px; opacity: .8; }
     .hint {
       text-align: center;
       margin: 8px 0 0;
@@ -351,10 +399,24 @@
 
     <p class="error" id="error" role="alert" hidden></p>
     <p class="today-alert" id="today-alert" role="status" hidden></p>
+
+    <div class="stats" id="stats" hidden>
+      <div class="stats-row">
+        <span id="remaining"></span>
+        <span id="rate" class="rate"></span>
+      </div>
+      <div class="progress" id="progress" role="progressbar" aria-label="달성률" aria-valuemin="0" aria-valuemax="100"><div class="bar"></div></div>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="할 일 골라 보기">
+      <button type="button" role="tab" data-filter="all">전체 <span class="count"></span></button>
+      <button type="button" role="tab" data-filter="active">진행 중 <span class="count"></span></button>
+      <button type="button" role="tab" data-filter="done">완료 <span class="count"></span></button>
+    </div>
+
     <ul id="todo-list"></ul>
     <p class="empty" id="loading">불러오는 중이에요…</p>
-    <p class="empty" id="empty" hidden><span class="big">🌷</span>아직 할 일이 없어요. 하나 추가해볼까요?</p>
-    <p class="summary" id="summary"></p>
+    <p class="empty" id="empty" hidden><span class="big" id="empty-icon"></span><span id="empty-text"></span></p>
     <p class="hint" id="hint">✏️를 누르거나 글자를 더블클릭하면 내용과 마감일을 고칠 수 있어요</p>
   </main>
 
@@ -382,8 +444,30 @@
     const list = document.getElementById('todo-list');
     const loading = document.getElementById('loading');
     const empty = document.getElementById('empty');
-    const summary = document.getElementById('summary');
+    const emptyIcon = document.getElementById('empty-icon');
+    const emptyText = document.getElementById('empty-text');
     const hint = document.getElementById('hint');
+    const stats = document.getElementById('stats');
+    const remainingText = document.getElementById('remaining');
+    const rateText = document.getElementById('rate');
+    const progress = document.getElementById('progress');
+    const progressBar = progress.querySelector('.bar');
+    const tabs = document.querySelectorAll('.tabs [role="tab"]');
+
+    // 고른 탭(전체 / 진행 중 / 완료)은 이 브라우저에 기억해 둡니다.
+    const FILTER_KEY = 'todo-filter';
+    let filter = 'all';
+    try {
+      const saved = localStorage.getItem(FILTER_KEY);
+      if (['all', 'active', 'done'].includes(saved)) filter = saved;
+    } catch {}
+    for (const tab of tabs) {
+      tab.addEventListener('click', () => {
+        filter = tab.dataset.filter;
+        try { localStorage.setItem(FILTER_KEY, filter); } catch {}
+        render();
+      });
+    }
 
     // Supabase의 todos 표에 저장합니다.
     let db = null;
@@ -403,9 +487,10 @@
       errorBox.textContent = '';
     }
 
-    // 마감이 가까운 순서로. 마감일이 없으면 맨 아래.
+    // 완료한 할 일은 맨 아래로. 그 안에서는 마감이 가까운 순서, 마감일이 없으면 아래쪽.
     // 마감일이 같거나 둘 다 없으면 만든 순서, 그다음 id 순서로.
-    function byDue(a, b) {
+    function byOrder(a, b) {
+      if (a.done !== b.done) return a.done ? 1 : -1;
       if (a.due_date !== b.due_date) {
         if (!a.due_date) return 1;
         if (!b.due_date) return -1;
@@ -433,27 +518,46 @@
       return { text: `${date} · D-${days}`, level: null };
     }
 
+    const EMPTY_MESSAGES = {
+      all: ['🌷', '아직 할 일이 없어요. 하나 추가해볼까요?'],
+      active: ['🎉', '진행 중인 할 일이 없어요. 다 끝냈어요!'],
+      done: ['🌱', '아직 완료한 할 일이 없어요. 하나씩 해볼까요?'],
+    };
+
     function render() {
+      const visible = todos.filter(t => filter === 'all' || (filter === 'done' ? t.done : !t.done));
       list.innerHTML = '';
-      for (const todo of todos) {
+      for (const todo of visible) {
         list.appendChild(todo.id === editingId ? renderEditing(todo) : renderItem(todo));
       }
 
       const total = todos.length;
       const doneCount = todos.filter(t => t.done).length;
+      const remaining = total - doneCount;
+      const rate = total ? Math.round(doneCount / total * 100) : 0;
+
       loading.hidden = !isLoading;
-      empty.hidden = isLoading || total > 0;
-      hint.hidden = total === 0;
+      empty.hidden = isLoading || visible.length > 0;
+      [emptyIcon.textContent, emptyText.textContent] = EMPTY_MESSAGES[total === 0 ? 'all' : filter];
+      hint.hidden = visible.length === 0;
+
+      stats.hidden = isLoading || total === 0;
+      remainingText.textContent = remaining === 0 ? '🎉 모두 끝냈어요!' : `남은 할 일 ${remaining}개`;
+      rateText.textContent = `달성률 ${rate}%`;
+      progressBar.style.width = `${rate}%`;
+      progress.setAttribute('aria-valuenow', rate);
+
+      const counts = { all: total, active: remaining, done: doneCount };
+      for (const tab of tabs) {
+        const selected = tab.dataset.filter === filter;
+        tab.setAttribute('aria-selected', selected);
+        tab.querySelector('.count').textContent = counts[tab.dataset.filter];
+      }
 
       const today = todayString();
       const dueToday = todos.filter(t => !t.done && t.due_date === today).length;
       todayAlert.hidden = dueToday === 0;
       todayAlert.textContent = `🔥 오늘 마감인 할 일이 ${dueToday}개 남았어요! 오늘 안에 꼭 끝내요 💪`;
-
-      if (total === 0) summary.textContent = '';
-      else if (doneCount === total) summary.textContent = '🎉 모두 끝냈어요! 최고예요!';
-      else if (doneCount === 0) summary.textContent = `💪 할 일 ${total}개, 화이팅!`;
-      else summary.textContent = `🎉 ${total}개 중 ${doneCount}개 완료했어요!`;
     }
 
     function renderItem(todo) {
@@ -467,10 +571,12 @@
       checkbox.addEventListener('change', async () => {
         const done = checkbox.checked;
         todo.done = done;
+        todos.sort(byOrder);
         render();
         const { error } = await db.from('todos').update({ done }).eq('id', todo.id);
         if (error) {
           todo.done = !done;
+          todos.sort(byOrder);
           render();
           showError('완료 표시를 저장하지 못했어요', error);
         } else {
@@ -526,7 +632,7 @@
         const { error } = await db.from('todos').delete().eq('id', todo.id);
         if (error) {
           todos.push(todo);
-          todos.sort(byDue);
+          todos.sort(byOrder);
           render();
           showError('할 일을 삭제하지 못했어요', error);
         } else {
@@ -588,12 +694,12 @@
         }
         const previous = { text: todo.text, due_date: todo.due_date };
         Object.assign(todo, changes);
-        todos.sort(byDue);
+        todos.sort(byOrder);
         render();
         const { error } = await db.from('todos').update(changes).eq('id', todo.id);
         if (error) {
           Object.assign(todo, previous);
-          todos.sort(byDue);
+          todos.sort(byOrder);
           render();
           showError('고친 내용을 저장하지 못했어요', error);
         } else {
@@ -653,7 +759,7 @@
       }
       clearError();
       todos.push(data);
-      todos.sort(byDue);
+      todos.sort(byOrder);
       input.value = '';
       dueInput.value = '';
       input.focus();
@@ -664,12 +770,13 @@
       const { data, error } = await db
         .from('todos')
         .select('id, text, done, author, due_date, created_at')
+        .order('done')
         .order('due_date', { nullsFirst: false })
         .order('created_at')
         .order('id');
       isLoading = false;
       if (error) showError('할 일을 불러오지 못했어요', error);
-      else todos = data.sort(byDue);
+      else todos = data.sort(byOrder);
       render();
     }
 
