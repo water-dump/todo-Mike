@@ -20,6 +20,8 @@
       --error-text: #c2335b;
       --badge-bg: #ffe4f1;
       --badge-text: #d4579a;
+      --danger: #e0344f;
+      --danger-bg: #fff0f2;
       --shadow: 0 12px 32px rgba(177, 140, 255, 0.25);
     }
     @media (prefers-color-scheme: dark) {
@@ -35,6 +37,8 @@
         --error-text: #ffb3c8;
         --badge-bg: #4a2a45;
         --badge-text: #ffb3d9;
+        --danger: #ff6b81;
+        --danger-bg: #46222f;
         --shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
       }
     }
@@ -194,9 +198,12 @@
       flex-direction: column;
       gap: 2px;
     }
+    li .text, li .due {
+      word-break: keep-all;
+      overflow-wrap: anywhere;
+    }
     li .text {
       font-size: 17px;
-      word-break: break-word;
       cursor: text;
     }
     li.done .text {
@@ -209,8 +216,42 @@
       font-size: 13px;
       color: var(--muted);
     }
-    li .due.soon { color: var(--error-text); }
-    li.done .due { color: var(--muted); }
+    li .due.tomorrow { color: var(--badge-text); }
+    li .due.overdue { color: var(--danger); font-weight: 700; }
+
+    /* 오늘 마감: 빨간 테두리 + 두근거리는 경고 */
+    li.urgent {
+      background: var(--danger-bg);
+      box-shadow: inset 0 0 0 2px var(--danger);
+    }
+    li .due.today {
+      align-self: flex-start;
+      margin-top: 3px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: var(--danger);
+      color: #fff;
+      font-weight: 700;
+      white-space: nowrap;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(224, 52, 79, .55); }
+      50% { transform: scale(1.05); box-shadow: 0 0 0 7px rgba(224, 52, 79, 0); }
+    }
+    .today-alert {
+      margin: 0 0 14px;
+      padding: 12px 16px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #ff4d67, #ff8fc7);
+      color: #fff;
+      font-size: 16px;
+      text-align: center;
+      box-shadow: 0 6px 18px rgba(224, 52, 79, .3);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      li .due.today { animation: none; }
+    }
     li .author {
       flex-shrink: 0;
       max-width: 6.5em;
@@ -223,8 +264,22 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    li.editing { flex-wrap: wrap; gap: 8px; }
+    li .edit-due {
+      font: inherit;
+      font-size: 15px;
+      padding: 4px 10px;
+      border: 2px solid var(--line);
+      border-radius: 10px;
+      background: var(--card);
+      color: var(--text);
+      color-scheme: light dark;
+      outline: none;
+    }
+    li .edit-due:focus { border-color: var(--purple); }
+    li .edit-save { margin-left: auto; }
     li .edit-input {
-      flex: 1;
+      flex: 1 1 100%;
       min-width: 0;
       font: inherit;
       font-size: 17px;
@@ -272,6 +327,12 @@
       font-size: 13px;
       color: var(--muted);
     }
+
+    /* 좁은 휴대폰 화면 */
+    @media (max-width: 400px) {
+      li { gap: 8px; padding-left: 12px; }
+      li button.icon { padding: 4px; }
+    }
   </style>
 </head>
 <body>
@@ -289,11 +350,12 @@
     </form>
 
     <p class="error" id="error" role="alert" hidden></p>
+    <p class="today-alert" id="today-alert" role="status" hidden></p>
     <ul id="todo-list"></ul>
     <p class="empty" id="loading">불러오는 중이에요…</p>
     <p class="empty" id="empty" hidden><span class="big">🌷</span>아직 할 일이 없어요. 하나 추가해볼까요?</p>
     <p class="summary" id="summary"></p>
-    <p class="hint" id="hint">글자를 더블클릭하면 고칠 수 있어요</p>
+    <p class="hint" id="hint">✏️를 누르거나 글자를 더블클릭하면 내용과 마감일을 고칠 수 있어요</p>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -303,8 +365,20 @@
     const input = document.getElementById('todo-input');
     const authorInput = document.getElementById('author-input');
     const dueInput = document.getElementById('due-input');
+
+    // 이름 칸에 적은 이름은 이 브라우저에 기억해 둡니다.
+    const AUTHOR_KEY = 'todo-author';
+    try {
+      authorInput.value = localStorage.getItem(AUTHOR_KEY) || '';
+    } catch {}
+    authorInput.addEventListener('input', () => {
+      try {
+        localStorage.setItem(AUTHOR_KEY, authorInput.value.trim());
+      } catch {}
+    });
     const addButton = form.querySelector('button.add');
     const errorBox = document.getElementById('error');
+    const todayAlert = document.getElementById('today-alert');
     const list = document.getElementById('todo-list');
     const loading = document.getElementById('loading');
     const empty = document.getElementById('empty');
@@ -348,15 +422,15 @@
       return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
     }
 
-    function dueLabel(due) {
+    // 마감일 글자와 경고 단계(overdue / today / tomorrow / 없음)
+    function dueInfo(due) {
       const [, month, day] = due.split('-').map(Number);
+      const date = `📅 ${month}월 ${day}일`;
       const days = Math.round((Date.parse(due) - Date.parse(todayString())) / 86400000);
-      let when;
-      if (days < 0) when = `${-days}일 지났어요`;
-      else if (days === 0) when = '오늘까지';
-      else if (days === 1) when = '내일까지';
-      else when = `D-${days}`;
-      return { text: `📅 ${month}월 ${day}일 · ${when}`, soon: days <= 1 };
+      if (days < 0) return { text: `${date} · ${-days}일 지났어요`, level: 'overdue' };
+      if (days === 0) return { text: '🔥 오늘 마감!', level: 'today' };
+      if (days === 1) return { text: `${date} · 내일까지`, level: 'tomorrow' };
+      return { text: `${date} · D-${days}`, level: null };
     }
 
     function render() {
@@ -370,6 +444,11 @@
       loading.hidden = !isLoading;
       empty.hidden = isLoading || total > 0;
       hint.hidden = total === 0;
+
+      const today = todayString();
+      const dueToday = todos.filter(t => !t.done && t.due_date === today).length;
+      todayAlert.hidden = dueToday === 0;
+      todayAlert.textContent = `🔥 오늘 마감인 할 일이 ${dueToday}개 남았어요! 오늘 안에 꼭 끝내요 💪`;
 
       if (total === 0) summary.textContent = '';
       else if (doneCount === total) summary.textContent = '🎉 모두 끝냈어요! 최고예요!';
@@ -408,10 +487,15 @@
       body.className = 'body';
       body.append(text);
       if (todo.due_date) {
-        const { text: label, soon } = dueLabel(todo.due_date);
+        const { text: label, level } = dueInfo(todo.due_date);
         const due = document.createElement('span');
-        due.className = soon ? 'due soon' : 'due';
+        due.className = 'due';
         due.textContent = label;
+        // 완료한 할 일에는 경고를 띄우지 않습니다.
+        if (!todo.done && level) {
+          due.classList.add(level);
+          if (level === 'today') li.classList.add('urgent');
+        }
         body.append(due);
       }
       li.append(checkbox, body);
@@ -456,6 +540,7 @@
 
     function renderEditing(todo) {
       const li = document.createElement('li');
+      li.className = 'editing';
 
       const field = document.createElement('input');
       field.type = 'text';
@@ -463,23 +548,52 @@
       field.value = todo.text;
       field.setAttribute('aria-label', '할 일 수정');
 
+      const dueField = document.createElement('input');
+      dueField.type = 'date';
+      dueField.className = 'edit-due';
+      dueField.value = todo.due_date || '';
+      dueField.setAttribute('aria-label', '마감일 수정');
+
+      const clearDue = document.createElement('button');
+      clearDue.type = 'button';
+      clearDue.className = 'icon';
+      clearDue.textContent = '✕';
+      clearDue.title = '마감일 지우기';
+      clearDue.setAttribute('aria-label', '마감일 지우기');
+
+      const saveButton = document.createElement('button');
+      saveButton.type = 'button';
+      saveButton.className = 'icon edit-save';
+      saveButton.textContent = '✅';
+      saveButton.title = '저장';
+      saveButton.setAttribute('aria-label', '저장');
+
       let finished = false;
       const finish = async (save) => {
         if (finished) return;
         finished = true;
-        const value = field.value.trim();
         editingId = null;
+
+        const changes = {};
+        const value = field.value.trim();
         // 빈 칸으로 저장하면 원래 내용을 유지합니다.
-        if (!save || !value || value === todo.text) {
+        if (value && value !== todo.text) changes.text = value;
+        // 날짜를 덜 입력했으면 원래 마감일을 유지합니다.
+        const due = dueField.validity.badInput ? todo.due_date : (dueField.value || null);
+        if (due !== todo.due_date) changes.due_date = due;
+
+        if (!save || Object.keys(changes).length === 0) {
           render();
           return;
         }
-        const previous = todo.text;
-        todo.text = value;
+        const previous = { text: todo.text, due_date: todo.due_date };
+        Object.assign(todo, changes);
+        todos.sort(byDue);
         render();
-        const { error } = await db.from('todos').update({ text: value }).eq('id', todo.id);
+        const { error } = await db.from('todos').update(changes).eq('id', todo.id);
         if (error) {
-          todo.text = previous;
+          Object.assign(todo, previous);
+          todos.sort(byDue);
           render();
           showError('고친 내용을 저장하지 못했어요', error);
         } else {
@@ -487,13 +601,23 @@
         }
       };
 
-      field.addEventListener('keydown', (e) => {
+      // 버튼을 눌러도 입력칸에서 포커스가 빠져나가지 않게 합니다.
+      for (const button of [clearDue, saveButton]) {
+        button.addEventListener('mousedown', (e) => e.preventDefault());
+      }
+      clearDue.addEventListener('click', () => { dueField.value = ''; });
+      saveButton.addEventListener('click', () => finish(true));
+
+      li.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') finish(true);
         else if (e.key === 'Escape') finish(false);
       });
-      field.addEventListener('blur', () => finish(true));
+      // 내용 칸과 마감일 칸 사이를 옮겨 다닐 때는 그대로 두고, 바깥을 누르면 저장합니다.
+      li.addEventListener('focusout', (e) => {
+        if (!li.contains(e.relatedTarget)) finish(true);
+      });
 
-      li.append(field);
+      li.append(field, dueField, clearDue, saveButton);
       requestAnimationFrame(() => {
         field.focus();
         field.select();
