@@ -73,8 +73,21 @@
     }
     form {
       display: flex;
+      flex-direction: column;
       gap: 8px;
       margin-bottom: 18px;
+    }
+    form .row {
+      display: flex;
+      gap: 8px;
+    }
+    .due-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-left: 6px;
+      font-size: 15px;
+      color: var(--muted);
     }
     form input {
       min-width: 0;
@@ -91,6 +104,11 @@
     form input:focus { outline: none; border-color: var(--purple); }
     #todo-input { flex: 1; }
     #author-input { flex: 0 0 92px; padding: 13px 14px; }
+    #due-input {
+      padding: 6px 14px;
+      font-size: 15px;
+      color-scheme: light dark;
+    }
     button.add {
       width: 50px;
       flex-shrink: 0;
@@ -169,9 +187,14 @@
     }
     li input[type="checkbox"]:checked::after { transform: scale(1); }
 
-    li .text {
+    li .body {
       flex: 1;
       min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    li .text {
       font-size: 17px;
       word-break: break-word;
       cursor: text;
@@ -182,6 +205,12 @@
       text-decoration-thickness: 2px;
       color: var(--muted);
     }
+    li .due {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    li .due.soon { color: var(--error-text); }
+    li.done .due { color: var(--muted); }
     li .author {
       flex-shrink: 0;
       max-width: 6.5em;
@@ -251,9 +280,12 @@
     <p class="subtitle">Mike's todo list</p>
 
     <form id="todo-form">
-      <input type="text" id="author-input" placeholder="이름" maxlength="20" autocomplete="off" aria-label="작성자 이름 (안 적어도 돼요)">
-      <input type="text" id="todo-input" placeholder="무엇을 할까요?" autocomplete="off" autofocus>
-      <button type="submit" class="add" aria-label="추가">＋</button>
+      <div class="row">
+        <input type="text" id="author-input" placeholder="이름" maxlength="20" autocomplete="off" aria-label="작성자 이름 (안 적어도 돼요)">
+        <input type="text" id="todo-input" placeholder="무엇을 할까요?" autocomplete="off" autofocus>
+        <button type="submit" class="add" aria-label="추가">＋</button>
+      </div>
+      <label class="due-row">📅 마감일 <input type="date" id="due-input" aria-label="마감일 (안 정해도 돼요)"></label>
     </form>
 
     <p class="error" id="error" role="alert" hidden></p>
@@ -270,6 +302,7 @@
     const form = document.getElementById('todo-form');
     const input = document.getElementById('todo-input');
     const authorInput = document.getElementById('author-input');
+    const dueInput = document.getElementById('due-input');
     const addButton = form.querySelector('button.add');
     const errorBox = document.getElementById('error');
     const list = document.getElementById('todo-list');
@@ -296,10 +329,34 @@
       errorBox.textContent = '';
     }
 
-    // 만든 순서대로. 같은 시각에 만들어졌으면 id 순서로.
-    function byCreated(a, b) {
+    // 마감이 가까운 순서로. 마감일이 없으면 맨 아래.
+    // 마감일이 같거나 둘 다 없으면 만든 순서, 그다음 id 순서로.
+    function byDue(a, b) {
+      if (a.due_date !== b.due_date) {
+        if (!a.due_date) return 1;
+        if (!b.due_date) return -1;
+        return a.due_date < b.due_date ? -1 : 1;
+      }
       if (a.created_at !== b.created_at) return a.created_at < b.created_at ? -1 : 1;
       return a.id - b.id;
+    }
+
+    // 오늘 날짜를 내 컴퓨터 시간대 기준 'YYYY-MM-DD'로.
+    function todayString() {
+      const now = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    }
+
+    function dueLabel(due) {
+      const [, month, day] = due.split('-').map(Number);
+      const days = Math.round((Date.parse(due) - Date.parse(todayString())) / 86400000);
+      let when;
+      if (days < 0) when = `${-days}일 지났어요`;
+      else if (days === 0) when = '오늘까지';
+      else if (days === 1) when = '내일까지';
+      else when = `D-${days}`;
+      return { text: `📅 ${month}월 ${day}일 · ${when}`, soon: days <= 1 };
     }
 
     function render() {
@@ -346,7 +403,18 @@
       text.className = 'text';
       text.textContent = todo.text;
       text.addEventListener('dblclick', () => startEdit(todo.id));
-      li.append(checkbox, text);
+
+      const body = document.createElement('div');
+      body.className = 'body';
+      body.append(text);
+      if (todo.due_date) {
+        const { text: label, soon } = dueLabel(todo.due_date);
+        const due = document.createElement('span');
+        due.className = soon ? 'due soon' : 'due';
+        due.textContent = label;
+        body.append(due);
+      }
+      li.append(checkbox, body);
 
       if (todo.author) {
         const author = document.createElement('span');
@@ -374,7 +442,7 @@
         const { error } = await db.from('todos').delete().eq('id', todo.id);
         if (error) {
           todos.push(todo);
-          todos.sort(byCreated);
+          todos.sort(byDue);
           render();
           showError('할 일을 삭제하지 못했어요', error);
         } else {
@@ -443,11 +511,13 @@
       const text = input.value.trim();
       // 이름은 안 적어도 돼요. 빈 칸이면 null로 저장합니다.
       const author = authorInput.value.trim() || null;
+      // 마감일도 안 정해도 돼요.
+      const due_date = dueInput.value || null;
       if (!text || !db || adding) return;
 
       adding = true;
       addButton.disabled = true;
-      const { data, error } = await db.from('todos').insert({ text, author }).select().single();
+      const { data, error } = await db.from('todos').insert({ text, author, due_date }).select().single();
       adding = false;
       addButton.disabled = false;
 
@@ -459,7 +529,9 @@
       }
       clearError();
       todos.push(data);
+      todos.sort(byDue);
       input.value = '';
+      dueInput.value = '';
       input.focus();
       render();
     });
@@ -467,12 +539,13 @@
     async function load() {
       const { data, error } = await db
         .from('todos')
-        .select('id, text, done, author, created_at')
+        .select('id, text, done, author, due_date, created_at')
+        .order('due_date', { nullsFirst: false })
         .order('created_at')
         .order('id');
       isLoading = false;
       if (error) showError('할 일을 불러오지 못했어요', error);
-      else todos = data;
+      else todos = data.sort(byDue);
       render();
     }
 
