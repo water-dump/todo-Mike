@@ -467,8 +467,43 @@
       to { filter: hue-rotate(360deg); }
     }
 
+    /* 67: 양쪽에서 손이 나와 번갈아 위아래로 */
+    .six-seven {
+      position: fixed;
+      inset: 0;
+      z-index: 55;
+      pointer-events: none;
+      animation: night 3.2s ease-in-out forwards;
+    }
+    .six-seven .hand {
+      position: absolute;
+      top: 40%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      animation: six-seven .4s ease-in-out infinite alternate;
+    }
+    .six-seven .hand.left { left: 3%; }
+    .six-seven .hand.right { right: 3%; animation-delay: -.4s; }
+    .six-seven .num {
+      padding: 2px 16px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--pink), var(--purple));
+      color: #fff;
+      font-size: 34px;
+      font-weight: 700;
+      box-shadow: var(--shadow);
+    }
+    .six-seven .palm { font-size: 84px; line-height: 1; }
+    .six-seven .right .palm { transform: scaleX(-1); }
+    @keyframes six-seven {
+      from { transform: translateY(-45px); }
+      to { transform: translateY(45px); }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       .night-sky .star { animation: none; }
+      .six-seven .hand { animation: none; }
     }
 
     /* 좁은 휴대폰 화면 */
@@ -938,6 +973,31 @@
         toast('🎂 생일 축하해요!');
       }
     }
+
+    // 할 일 칸에 67을 입력하면 양쪽에서 손이 나와 six seven!
+    function sixSeven() {
+      if (document.querySelector('.six-seven')) return;
+      const layer = document.createElement('div');
+      layer.className = 'six-seven';
+      for (const [side, num] of [['left', '6'], ['right', '7']]) {
+        const hand = document.createElement('div');
+        hand.className = `hand ${side}`;
+        const label = document.createElement('span');
+        label.className = 'num';
+        label.textContent = num;
+        const palm = document.createElement('span');
+        palm.className = 'palm';
+        palm.textContent = '🫴';
+        hand.append(label, palm);
+        layer.append(hand);
+      }
+      document.body.append(layer);
+      toast('🫴 six seven! 🫴');
+      setTimeout(() => layer.remove(), 3300);
+    }
+    input.addEventListener('input', () => {
+      if (input.value.trim() === '67') sixSeven();
+    });
 
     // 입력칸 밖에서 ← → ↑ ↓ G V C S ! 를 차례로 누르면 무지개 모드. 새로고침해야 멈춰요.
     // 한글 입력 상태에서도 되도록 글자 대신 키 위치(e.code)로 확인합니다.
