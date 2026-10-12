@@ -376,6 +376,101 @@
       color: var(--muted);
     }
 
+    /* ===== 이스터에그 ===== */
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 28px;
+      z-index: 60;
+      max-width: calc(100% - 32px);
+      padding: 12px 20px;
+      border-radius: 999px;
+      background: var(--text);
+      color: var(--card);
+      font-size: 16px;
+      text-align: center;
+      box-shadow: var(--shadow);
+      transform: translateX(-50%);
+      animation: toast-in .25s ease-out;
+    }
+    @keyframes toast-in {
+      from { opacity: 0; transform: translate(-50%, 12px); }
+    }
+
+    /* 색종이(아래로)와 풍선(위로) */
+    .fx-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .fx-fall, .fx-float {
+      position: absolute;
+      animation-fill-mode: forwards;
+    }
+    .fx-fall { top: -10vh; animation-name: fx-fall; animation-timing-function: linear; }
+    .fx-float { bottom: -10vh; animation-name: fx-float; animation-timing-function: ease-in; }
+    @keyframes fx-fall {
+      to { transform: translate(var(--drift), 120vh) rotate(var(--spin)); }
+    }
+    @keyframes fx-float {
+      to { transform: translate(var(--drift), -125vh); }
+    }
+
+    /* 잠자기: 잠깐 밤하늘 */
+    .night-sky {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 82% 14%, rgba(255, 236, 170, .35), transparent 18%),
+        linear-gradient(rgba(11, 16, 51, .82), rgba(27, 20, 70, .82));
+      animation: night 4.5s ease-in-out forwards;
+    }
+    .night-sky .moon {
+      position: absolute;
+      top: 6%;
+      right: 10%;
+      font-size: 64px;
+    }
+    .night-sky .star {
+      position: absolute;
+      font-size: 14px;
+      animation: twinkle 1.4s ease-in-out infinite alternate;
+    }
+    @keyframes night {
+      0% { opacity: 0; }
+      15%, 80% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    @keyframes twinkle {
+      from { opacity: .3; }
+      to { opacity: 1; }
+    }
+
+    /* 무지개 모드: 새로고침해야 멈춰요 */
+    body.rainbow {
+      background: linear-gradient(135deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #b18cff, #ff8fc7, #ff6b6b);
+      background-size: 400% 400%;
+      background-attachment: fixed;
+      animation: rainbow-bg 8s linear infinite alternate;
+    }
+    body.rainbow main { animation: rainbow-hue 4s linear infinite; }
+    @keyframes rainbow-bg {
+      from { background-position: 0% 50%; }
+      to { background-position: 100% 50%; }
+    }
+    @keyframes rainbow-hue {
+      from { filter: hue-rotate(0deg); }
+      to { filter: hue-rotate(360deg); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .night-sky .star { animation: none; }
+    }
+
     /* 좁은 휴대폰 화면 */
     @media (max-width: 400px) {
       li { gap: 8px; padding-left: 12px; }
@@ -581,6 +676,8 @@
           showError('완료 표시를 저장하지 못했어요', error);
         } else {
           clearError();
+          // 마지막 할 일을 끝내서 100%가 되면 축하해요.
+          if (done && todos.every(t => t.done)) celebrate();
         }
       });
 
@@ -764,6 +861,101 @@
       dueInput.value = '';
       input.focus();
       render();
+      reactToWords(data.text);
+    });
+
+    // ===== 이스터에그 =====
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    function toast(message) {
+      document.querySelector('.toast')?.remove();
+      const el = document.createElement('div');
+      el.className = 'toast';
+      el.setAttribute('role', 'status');
+      el.textContent = message;
+      document.body.append(el);
+      setTimeout(() => el.remove(), 3200);
+    }
+
+    // 이모지를 화면 위에서 떨어뜨리거나(up: false) 아래에서 띄워 올립니다(up: true).
+    function burst(emojis, { count = 60, up = false } = {}) {
+      if (reduceMotion.matches) return;
+      const layer = document.createElement('div');
+      layer.className = 'fx-layer';
+      for (let i = 0; i < count; i++) {
+        const piece = document.createElement('span');
+        piece.className = up ? 'fx-float' : 'fx-fall';
+        piece.textContent = emojis[i % emojis.length];
+        piece.style.left = `${Math.random() * 100}%`;
+        piece.style.fontSize = `${16 + Math.random() * 18}px`;
+        piece.style.animationDelay = `${Math.random() * 0.8}s`;
+        piece.style.animationDuration = `${(up ? 4 : 2.5) + Math.random() * 1.5}s`;
+        piece.style.setProperty('--drift', `${Math.random() * 160 - 80}px`);
+        piece.style.setProperty('--spin', `${Math.random() * 720 - 360}deg`);
+        layer.append(piece);
+      }
+      document.body.append(layer);
+      setTimeout(() => layer.remove(), 7000);
+    }
+
+    function celebrate() {
+      burst(['🎉', '🎊', '✨', '💖', '⭐', '🌷']);
+      toast('🎉 100% 달성! 오늘도 최고예요!');
+    }
+
+    function nightSky() {
+      document.querySelector('.night-sky')?.remove();
+      const sky = document.createElement('div');
+      sky.className = 'night-sky';
+      const moon = document.createElement('span');
+      moon.className = 'moon';
+      moon.textContent = '🌙';
+      sky.append(moon);
+      for (let i = 0; i < 24; i++) {
+        const star = document.createElement('span');
+        star.className = 'star';
+        star.textContent = i % 3 ? '✦' : '⭐';
+        star.style.top = `${Math.random() * 90}%`;
+        star.style.left = `${Math.random() * 95}%`;
+        star.style.color = '#fff6c8';
+        star.style.animationDelay = `${Math.random() * 1.4}s`;
+        sky.append(star);
+      }
+      document.body.append(sky);
+      setTimeout(() => sky.remove(), 4600);
+    }
+
+    // 특별한 단어로 할 일을 추가하면 반응해요. 띄어쓰기는 무시합니다.
+    function reactToWords(text) {
+      const words = text.replace(/\s/g, '');
+      if (words.includes('숙제안하기')) {
+        toast('선생님께 이를 거예요 👀');
+      } else if (words.includes('잠자기')) {
+        nightSky();
+        toast('🌙 쿨쿨… 푹 자고 내일 또 해요');
+      } else if (words.includes('생일파티')) {
+        burst(['🎈', '🎈', '🎂', '🎁', '🎈'], { count: 30, up: true });
+        toast('🎂 생일 축하해요!');
+      }
+    }
+
+    // 입력칸 밖에서 ← → ↑ ↓ G V C S ! 를 차례로 누르면 무지개 모드. 새로고침해야 멈춰요.
+    // 한글 입력 상태에서도 되도록 글자 대신 키 위치(e.code)로 확인합니다.
+    const SECRET = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'KeyG', 'KeyV', 'KeyC', 'KeyS', '!'];
+    let secretIndex = 0;
+    document.addEventListener('keydown', (e) => {
+      if (e.target.closest && e.target.closest('input, textarea')) return;
+      if (e.key === 'Shift' || e.repeat) return;
+      const key = e.key === '!' || (e.code === 'Digit1' && e.shiftKey) ? '!' : e.code;
+      if (key === SECRET[secretIndex]) secretIndex++;
+      else secretIndex = key === SECRET[0] ? 1 : 0;
+      if (secretIndex === SECRET.length) {
+        secretIndex = 0;
+        if (!document.body.classList.contains('rainbow')) {
+          document.body.classList.add('rainbow');
+          toast('🌈 무지개 모드! 새로고침해야 멈춰요');
+        }
+      }
     });
 
     async function load() {
